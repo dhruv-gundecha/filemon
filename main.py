@@ -11,7 +11,7 @@ import time
 
 # Define the directories and files for monitoring and storing data
 directory_to_monitor = r'C:\Users\ASUS\Documents\imp'
-shadow_directory = r'C:\Users\ASUS\Documents\shadow1'
+shadow_directory = r'C:\Users\ASUS\Documents\shadow'
 record_file = "file_records.json"
 master_table_file = "master_table.json"
 log_file = "modification_log.json"
@@ -19,6 +19,7 @@ log_file = "modification_log.json"
 # Create the shadow directory if it doesn't exist
 if not os.path.exists(shadow_directory):
     os.makedirs(shadow_directory)
+
 
 class FileChangeHandler(FileSystemEventHandler):
     def __init__(self):
@@ -255,7 +256,6 @@ class FileChangeHandler(FileSystemEventHandler):
             return sorted_records[:5]  # Return the 5 latest records or fewer if there are not enough
         else:
             return []
-    # ... (rest of your code)
 
     def walk_directory(self, dir_path):
         # Recursively traverse the directory and its subdirectories
@@ -278,6 +278,7 @@ class FileChangeHandler(FileSystemEventHandler):
 
     # ... (other event handlers and methods)
 
+
 if __name__ == "__main__":
     event_handler = FileChangeHandler()
     observer = Observer()
@@ -296,7 +297,12 @@ if __name__ == "__main__":
             if user_choice == 'q':
                 break
             elif user_choice.isdigit():
-                file_list = os.listdir(directory_to_monitor)
+                file_list = []
+                for root, dirs, files in os.walk(directory_to_monitor):
+                    for file in files:
+                        file_list.append(file)
+
+                print("filelist", file_list)
                 file_index = int(user_choice) - 1
                 if 0 <= file_index < len(file_list):
                     filename_to_check = file_list[file_index]
@@ -318,4 +324,3 @@ if __name__ == "__main__":
         observer.stop()
 
     observer.join()
-
