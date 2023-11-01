@@ -11,7 +11,7 @@ import time
 
 # Define the directories and files for monitoring and storing data
 directory_to_monitor = r'C:\Users\ASUS\Documents\imp'
-shadow_directory = r'C:\Users\ASUS\Documents\shadow'
+shadow_directory = r'C:\Users\ASUS\Documents\shadow1'
 record_file = "file_records.json"
 master_table_file = "master_table.json"
 log_file = "modification_log.json"
@@ -19,7 +19,6 @@ log_file = "modification_log.json"
 # Create the shadow directory if it doesn't exist
 if not os.path.exists(shadow_directory):
     os.makedirs(shadow_directory)
-
 
 class FileChangeHandler(FileSystemEventHandler):
     def __init__(self):
@@ -50,6 +49,16 @@ class FileChangeHandler(FileSystemEventHandler):
                 self.create_shadow_copy(file_path)
                 self.initial_file_lengths[file_path] = len(self.read_file_content(file_path))
                 self.file_content[file_path] = self.read_file_content(file_path)
+
+    def create_shadow_copy(self, file_path):
+        shadow_path = os.path.join(shadow_directory, os.path.relpath(file_path, directory_to_monitor))
+
+        # Create the directory structure if it doesn't exist
+        shadow_dir = os.path.dirname(shadow_path)
+        if not os.path.exists(shadow_dir):
+            os.makedirs(shadow_dir)
+
+        shutil.copy2(file_path, shadow_path)
 
     def on_modified(self, event):
         if not event.is_directory:
@@ -101,10 +110,6 @@ class FileChangeHandler(FileSystemEventHandler):
                 file_list.append(os.path.join(root, file))
 
         return file_list
-
-    def create_shadow_copy(self, file_path):
-        shadow_path = os.path.join(shadow_directory, os.path.relpath(file_path, directory_to_monitor))
-        shutil.copy2(file_path, shadow_path)
 
     def rollback_file(self, file_path):
         shadow_path = os.path.join(shadow_directory, os.path.relpath(file_path, directory_to_monitor))
@@ -250,13 +255,37 @@ class FileChangeHandler(FileSystemEventHandler):
             return sorted_records[:5]  # Return the 5 latest records or fewer if there are not enough
         else:
             return []
+    # ... (rest of your code)
 
+    def walk_directory(self, dir_path):
+        # Recursively traverse the directory and its subdirectories
+        for root, dirs, files in os.walk(dir_path):
+            for file in files:
+                file_path = os.path.join(root, file)
+                self.create_shadow_copy(file_path)
+                self.initial_file_lengths[file_path] = len(self.read_file_content(file_path))
+                self.file_content[file_path] = self.read_file_content(file_path)
+
+    def on_created(self, event):
+        if event.is_directory:
+            # A new directory was created; monitor it for changes
+            self.walk_directory(event.src_path)
+        else:
+            file_path = event.src_path
+
+            # Create a shadow copy of the newly created file
+            self.create_shadow_copy(file_path)
+
+    # ... (other event handlers and methods)
 
 if __name__ == "__main__":
     event_handler = FileChangeHandler()
     observer = Observer()
     observer.schedule(event_handler, path=directory_to_monitor, recursive=True)
     observer.start()
+
+    # Walk the initial directory to handle its files and subdirectories
+    event_handler.walk_directory(directory_to_monitor)
 
     timer = time.time()  # Initialize the global timer
 
@@ -289,3 +318,4 @@ if __name__ == "__main__":
         observer.stop()
 
     observer.join()
+
