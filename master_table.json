@@ -1,0 +1,42 @@
+{
+    "Howto.txt": [
+        {
+            "last_modified_timestamp": "03-11-2023 15:40:19",
+            "modifying_process": "Modified (22952)",
+            "user": "priya",
+            "last_change_percentage": 50.0
+        },
+        {
+            "last_modified_timestamp": "03-11-2023 15:44:23",
+            "modifying_process": "Modified (26256)",
+            "user": "priya",
+            "last_change_percentage": 33.33
+        }
+    ],
+    "asda.txt": [
+        {
+            "last_modified_timestamp": "03-11-2023 15:41:48",
+            "modifying_process": "Modified (19256)",
+            "user": "priya",
+            "last_change_percentage": 80.95
+        },
+        {
+            "last_modified_timestamp": "03-11-2023 15:43:17",
+            "modifying_process": "Rolled Back (19256)",
+            "user": "priya",
+            "last_change_percentage": 425.0
+        },
+        {
+            "last_modified_timestamp": "04-11-2023 11:52:44",
+            "modifying_process": "Modified (24976)",
+            "user": "priya",
+            "last_change_percentage": 68.0
+        },
+        {
+            "last_modified_timestamp": "04-11-2023 11:53:05",
+            "modifying_process": "Modified (24976)",
+            "user": "priya",
+            "last_change_percentage": 100.0
+        }
+    ]
+}

@@ -10,8 +10,8 @@ import tabulate
 import time
 
 # Define the directories and files for monitoring and storing data
-directory_to_monitor = r'C:\Users\ASUS\Documents\imp'
-shadow_directory = r'C:\Users\ASUS\Documents\shadow'
+directory_to_monitor = r'D:\AdwCleaner'
+shadow_directory = r'D:\AdwCleaner_Shadow'
 record_file = "file_records.json"
 master_table_file = "master_table.json"
 log_file = "modification_log.json"
@@ -28,6 +28,8 @@ class FileChangeHandler(FileSystemEventHandler):
         self.initial_file_lengths = {}
         self.records = {}
         self.log = []
+        self.text_file_extensions = ['.txt', '.log', '.json', '.xml','.py']
+
 
         # Load previous records if available
         if os.path.exists(record_file):
@@ -65,16 +67,24 @@ class FileChangeHandler(FileSystemEventHandler):
         if not event.is_directory:
             file_path = event.src_path
 
-            added_letters, deleted_letters = self.calculate_text_changes(file_path)
-            percentage_change = self.calculate_percentage_change(file_path, added_letters, deleted_letters)
+            # Check if the file has a text file extension
+            file_extension = os.path.splitext(file_path)[1]
+            if file_extension in self.text_file_extensions:
+                added_letters, deleted_letters = self.calculate_text_changes(file_path)
+                percentage_change = self.calculate_percentage_change(file_path, added_letters, deleted_letters)
 
-            if len(added_letters) == 0 and len(deleted_letters) == 0:
-                # No content change, so we skip logging this
-                pass
+                if len(added_letters) == 0 and len(deleted_letters) == 0:
+                    # No content change, so we skip logging this
+                    pass
+                else:
+                    self.record_modification(file_path, percentage_change, added_letters, deleted_letters)
             else:
-                self.record_modification(file_path, percentage_change, added_letters, deleted_letters)
+                # For binary files, simply create a shadow copy and log the modification
+                self.create_shadow_copy(file_path)
+                self.log_binary_modification(file_path)  # Create a separate method for binary file logging
 
         self.update_master_table_periodically()
+
 
     def update_master_table_periodically(self):
         global timer
@@ -154,9 +164,18 @@ class FileChangeHandler(FileSystemEventHandler):
         except FileNotFoundError:
             return [], []  # No previous content to compare with
 
-    def read_file_content(self, file_path):
-        with open(file_path, "r", encoding="utf-8") as file:
-            return file.read()
+    def read_file_content(self, file_path, encodings=['utf-8', 'latin-1', 'iso-8859-1']):
+        for encoding in encodings:
+            try:
+                with open(file_path, "r", encoding=encoding) as file:
+                    return file.read()
+            except UnicodeDecodeError:
+                continue
+
+        # If all encodings fail, return an empty string or handle the error as needed
+        return ""
+
+
 
     def calculate_percentage_change1(self, file_path, added_letters, deleted_letters):
         total_letters = len(added_letters) - len(deleted_letters)
