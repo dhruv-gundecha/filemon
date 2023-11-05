@@ -1,5 +1,7 @@
+import hashlib
 import os
 import difflib
+import threading
 from datetime import datetime, timedelta
 import pytz
 from watchdog.observers import Observer
@@ -10,8 +12,8 @@ import tabulate
 import time
 
 # Define the directories and files for monitoring and storing data
-directory_to_monitor = r'D:\AdwCleaner'
-shadow_directory = r'D:\AdwCleaner_Shadow'
+directory_to_monitor = r'C:\Users\ASUS\Documents\imp'
+shadow_directory = r'C:\Users\ASUS\Documents\shadow4'
 record_file = "file_records.json"
 master_table_file = "master_table.json"
 log_file = "modification_log.json"
@@ -28,8 +30,6 @@ class FileChangeHandler(FileSystemEventHandler):
         self.initial_file_lengths = {}
         self.records = {}
         self.log = []
-        self.text_file_extensions = ['.txt', '.log', '.json', '.xml','.py']
-
 
         # Load previous records if available
         if os.path.exists(record_file):
@@ -49,9 +49,12 @@ class FileChangeHandler(FileSystemEventHandler):
         for root, dirs, files in os.walk(directory_to_monitor):
             for file in files:
                 file_path = os.path.join(root, file)
-                self.create_shadow_copy(file_path)
-                self.initial_file_lengths[file_path] = len(self.read_file_content(file_path))
-                self.file_content[file_path] = self.read_file_content(file_path)
+                if self.is_image(file_path):
+                    pass
+                else:
+                    self.create_shadow_copy(file_path)
+                    self.initial_file_lengths[file_path] = len(self.read_file_content(file_path))
+                    self.file_content[file_path] = self.read_file_content(file_path)
 
     def create_shadow_copy(self, file_path):
         shadow_path = os.path.join(shadow_directory, os.path.relpath(file_path, directory_to_monitor))
@@ -63,13 +66,41 @@ class FileChangeHandler(FileSystemEventHandler):
 
         shutil.copy2(file_path, shadow_path)
 
+    def record_image_modification(self, file_path):
+        ist = pytz.timezone('Asia/Kolkata')  # Timezone for IST
+        timestamp = datetime.now(ist).strftime("%d-%m-%Y %H:%M:%S")
+        user_info = os.getlogin()
+        process_id = os.getpid()  # Get the current process ID
+
+        existing_entry = next((entry for entry in self.log if
+                               entry["filename"] == file_path and entry["lastmodified timestamp"] == timestamp), None)
+
+        if existing_entry or "~RF" in file_path or ".TMP" in file_path or "tmp" in file_path:
+            # Entry with the same filename and timestamp already exists, do not add it again
+            return
+        modification_record = {
+            "filename": file_path,
+            "lastmodified timestamp": timestamp,
+            "modifying process": f"{process_id} (Modified)",
+            "user": user_info,
+        }
+
+        self.log.append(modification_record)
+
+        with open(master_table_file, "w") as file:
+            json.dump(self.master_table, file, indent=4)
+
+        with open(log_file, "w") as file:
+            json.dump(self.log, file, indent=4)
+
     def on_modified(self, event):
         if not event.is_directory:
             file_path = event.src_path
 
-            # Check if the file has a text file extension
-            file_extension = os.path.splitext(file_path)[1]
-            if file_extension in self.text_file_extensions:
+            # Check if the modified file is binary (not text)
+            if self.is_image(file_path):
+                self.record_image_modification(file_path)
+            else:
                 added_letters, deleted_letters = self.calculate_text_changes(file_path)
                 percentage_change = self.calculate_percentage_change(file_path, added_letters, deleted_letters)
 
@@ -78,36 +109,15 @@ class FileChangeHandler(FileSystemEventHandler):
                     pass
                 else:
                     self.record_modification(file_path, percentage_change, added_letters, deleted_letters)
-            else:
-                # For binary files, simply create a shadow copy and log the modification
-                self.create_shadow_copy(file_path)
-                self.log_binary_modification(file_path)  # Create a separate method for binary file logging
-
-        self.update_master_table_periodically()
 
 
-    def update_master_table_periodically(self):
-        global timer
-        current_time = time.time()
+    def is_image(self, file_path):
+        image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', '.ico'}
+        _, file_extension = os.path.splitext(file_path)
 
-        # Check if 5 minutes have passed since the last update
-        if current_time - timer >= 20:
-            timer = current_time  # Reset the timer
-
-            for file_path in list(self.initial_file_lengths.keys()):
-                shadow_path = os.path.join(shadow_directory, os.path.relpath(file_path, directory_to_monitor))
-                added_letters, deleted_letters = self.calculate_text_changes1(shadow_path, file_path)
-                percentage_change = self.calculate_percentage_change1(shadow_path, added_letters, deleted_letters)
-                if len(added_letters) == 0 and len(deleted_letters) == 0:
-                    # Record the modification
-                    pass
-                else:
-                    self.update_master_table(shadow_path, os.getlogin(), percentage_change)
-
-                if percentage_change > 101:
-                    self.rollback_file(file_path)
-                else:
-                    self.create_shadow_copy(file_path)
+        if "~RF" in file_path or ".TMP" in file_path or "tmp" in file_path:
+            return True
+        return file_extension.lower() in image_extensions
 
     def list_files(self):
         # List and display the files in the monitored folder
@@ -175,7 +185,38 @@ class FileChangeHandler(FileSystemEventHandler):
         # If all encodings fail, return an empty string or handle the error as needed
         return ""
 
+    def compare_and_update_shadow(self, file_path):
+        shadow_path = os.path.join(shadow_directory, os.path.relpath(file_path, directory_to_monitor))
 
+        # Calculate the hash of the shadow file
+        with open(shadow_path, 'rb') as shadow_file:
+            shadow_hash = hashlib.md5(shadow_file.read()).hexdigest()
+
+        # Calculate the hash of the current file
+        with open(file_path, 'rb') as current_file:
+            current_hash = hashlib.md5(current_file.read()).hexdigest()
+
+        # Compare the hashes
+        if shadow_hash == current_hash:
+            # No need to update the backup, hashes are the same
+            return
+        if self.is_image(file_path):
+            self.update_master_table(shadow_path, os.getlogin(), 0)
+            self.create_shadow_copy(file_path)
+        else:
+
+            added_letters, deleted_letters = self.calculate_text_changes1(shadow_path, file_path)
+            percentage_change = self.calculate_percentage_change1(shadow_path, added_letters, deleted_letters)
+            if len(added_letters) == 0 and len(deleted_letters) == 0:
+                # Record the modification
+                pass
+            else:
+                self.update_master_table(shadow_path, os.getlogin(), percentage_change)
+
+            if percentage_change > 101:
+                self.rollback_file(file_path)
+            else:
+                self.create_shadow_copy(file_path)
 
     def calculate_percentage_change1(self, file_path, added_letters, deleted_letters):
         total_letters = len(added_letters) - len(deleted_letters)
@@ -285,17 +326,14 @@ class FileChangeHandler(FileSystemEventHandler):
                 self.initial_file_lengths[file_path] = len(self.read_file_content(file_path))
                 self.file_content[file_path] = self.read_file_content(file_path)
 
-    def on_created(self, event):
-        if event.is_directory:
-            # A new directory was created; monitor it for changes
-            self.walk_directory(event.src_path)
-        else:
-            file_path = event.src_path
 
-            # Create a shadow copy of the newly created file
-            self.create_shadow_copy(file_path)
-
-    # ... (other event handlers and methods)
+def compare_and_update_shadow_thread():
+    while True:
+        for root, dirs, files in os.walk(directory_to_monitor):
+            for file in files:
+                file_path = os.path.join(root, file)
+                event_handler.compare_and_update_shadow(file_path)
+        time.sleep(60)
 
 
 if __name__ == "__main__":
@@ -309,6 +347,10 @@ if __name__ == "__main__":
 
     timer = time.time()  # Initialize the global timer
 
+    shadow_thread = threading.Thread(target=compare_and_update_shadow_thread)
+    shadow_thread.daemon = True  # Set as a daemon thread, so it stops when the main program exits
+    shadow_thread.start()
+
     try:
         while True:
             event_handler.list_files()
@@ -321,7 +363,6 @@ if __name__ == "__main__":
                     for file in files:
                         file_list.append(file)
 
-                print("filelist", file_list)
                 file_index = int(user_choice) - 1
                 if 0 <= file_index < len(file_list):
                     filename_to_check = file_list[file_index]
